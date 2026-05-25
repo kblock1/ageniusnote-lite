@@ -40,7 +40,9 @@ First-run note: faster-whisper downloads the `base.en` model (~150 MB) on the fi
 
 ## Configure
 
-Click the **Settings** button in the Lite window. The dialog lets you change the global hotkey, Whisper model, device (CPU / CUDA / auto), and the default auto-paste state. Changes apply immediately — no restart, no rebuild. The hotkey field is a capture widget: click it, press the chord you want, and the new binding takes effect when you click OK. If you swap the model or device, the new one is warmed up in the background so your first recording afterwards is still snappy.
+Click the **Settings** button in the Lite window. The dialog lets you change the global hotkey, Whisper model, device (CPU / CUDA / auto), the default auto-paste state, and a custom-vocabulary list. Changes apply immediately — no restart, no rebuild. The hotkey field is a capture widget: click it, press the chord you want, and the new binding takes effect when you click OK. If you swap the model or device, the new one is warmed up in the background so your first recording afterwards is still snappy.
+
+**Custom vocabulary** is a short list of proper nouns, acronyms, or product names that the transcriber tends to mishear — e.g. `n8n, Agenius, Cursor, faster-whisper`. Comma- or space-separated, 5–20 terms works best. The same string is passed to faster-whisper as both `hotwords` (token-level bias) and `initial_prompt` (so unusual casing/spelling like `n8n` survives too). It's probabilistic biasing, not a dictionary — it nudges the decoder, doesn't guarantee. If a term still mis-transcribes after adding it, try a bigger model (`small.en` or `medium.en`); `base.en` is the weakest at this.
 
 Settings persist to a JSON file alongside the OS's standard per-user config location:
 
@@ -57,6 +59,7 @@ Environment variables are still honored as a fallback (config.json wins if both 
 | `VN_LITE_MODEL` | `base.en` | Any faster-whisper model name. `tiny.en` (fastest), `base.en` (default), `small.en`, `medium.en`, `large-v3` (slowest, best). |
 | `VN_LITE_HOTKEY` | `<ctrl>+<alt>+m` | pynput hotkey string. Examples: `<f9>`, `<alt_r>+v`, `<ctrl>+<shift>+;`. |
 | `VN_LITE_DEVICE` | `cpu` | Device strategy: `cpu` (small installer, default), `cuda` (NVIDIA GPU if CUDA libs exist), or `auto` (try CUDA then CPU). |
+| `VN_LITE_VOCABULARY` | *(empty)* | Comma/space-separated list of terms to bias transcription toward (proper nouns, acronyms, product names). Passed to faster-whisper as both `hotwords` and `initial_prompt`. Example: `n8n, Agenius, Cursor, faster-whisper`. |
 
 ## GPU acceleration (optional)
 

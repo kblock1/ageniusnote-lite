@@ -169,6 +169,7 @@ KNOWN_MODELS = ("tiny.en", "base.en", "small.en", "medium.en", "large-v3")
 FALLBACK_MODEL = "base.en"
 FALLBACK_HOTKEY = "<ctrl>+<alt>+m"
 FALLBACK_DEVICE = "cpu"
+FALLBACK_VOCABULARY = ""
 
 
 def _config_dir() -> Path:
@@ -216,6 +217,7 @@ DEFAULT_DEVICE = _resolve(_CONFIG, "device", "VN_LITE_DEVICE", FALLBACK_DEVICE).
 if DEFAULT_DEVICE not in VALID_DEVICES:
     DEFAULT_DEVICE = FALLBACK_DEVICE
 DEFAULT_AUTO_PASTE = bool(_CONFIG.get("auto_paste", True))
+DEFAULT_VOCABULARY = _resolve(_CONFIG, "vocabulary", "VN_LITE_VOCABULARY", FALLBACK_VOCABULARY)
 
 
 def _read_app_version() -> str:
@@ -401,15 +403,31 @@ def _warmup_inference(model) -> None:
         pass
 
 
-def _run_transcribe(model, wav_path: str) -> str:
+def _run_transcribe(model, wav_path: str, vocabulary: str = "") -> str:
+    vocab = (vocabulary or "").strip()
+    kwargs: dict = {
+        "vad_filter": True,
+        "vad_parameters": {"min_silence_duration_ms": 500},
+    }
+    if vocab:
+        # hotwords biases the decoder toward specific terms (faster-whisper >=1.0).
+        # initial_prompt feeds the same string as pseudo-context so the model also
+        # picks up preferred casing/spelling (e.g. "n8n" lowercase with a digit).
+        kwargs["hotwords"] = vocab
+        kwargs["initial_prompt"] = vocab
     try:
-        segments, _info = model.transcribe(
-            wav_path,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500},
-        )
+        segments, _info = model.transcribe(wav_path, **kwargs)
     except TypeError:
-        segments, _info = model.transcribe(wav_path)
+        # Older faster-whisper missing one of the kwargs above. Degrade to the
+        # original VAD-only call, then to a bare call if even that's unsupported.
+        try:
+            segments, _info = model.transcribe(
+                wav_path,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+        except TypeError:
+            segments, _info = model.transcribe(wav_path)
     return " ".join(s.text.strip() for s in segments).strip()
 
 
@@ -417,6 +435,7 @@ def transcribe(
     wav_bytes: bytes,
     model_name: str = DEFAULT_MODEL,
     device_pref: str = DEFAULT_DEVICE,
+    vocabulary: str = DEFAULT_VOCABULARY,
 ) -> tuple[str, dict]:
     import tempfile
     started = time.perf_counter()
@@ -427,7 +446,7 @@ def transcribe(
         tmp_path = tmp.name
     try:
         try:
-            text = _run_transcribe(model, tmp_path)
+            text = _run_transcribe(model, tmp_path, vocabulary)
         except Exception as exc:
             if _WHISPER_CACHE["device"] != "cuda":
                 raise
@@ -435,7 +454,7 @@ def transcribe(
             # construction appeared to succeed. Retry once on CPU.
             fallback_reason = f"{type(exc).__name__}: {exc}"
             model = _get_model(model_name, "cpu")
-            text = _run_transcribe(model, tmp_path)
+            text = _run_transcribe(model, tmp_path, vocabulary)
     finally:
         try:
             os.remove(tmp_path)
@@ -465,6 +484,7 @@ class TranscribeWorker(QThread):
         model_name: str,
         device_pref: str,
         target_handle: object | None,
+        vocabulary: str = "",
     ):
         super().__init__()
         self.wav = wav
@@ -472,10 +492,13 @@ class TranscribeWorker(QThread):
         self.model_name = model_name
         self.device_pref = device_pref
         self.target_handle = target_handle
+        self.vocabulary = vocabulary
 
     def run(self) -> None:
         try:
-            text, meta = transcribe(self.wav, self.model_name, self.device_pref)
+            text, meta = transcribe(
+                self.wav, self.model_name, self.device_pref, self.vocabulary
+            )
             meta["paste_after"] = self.paste_after
             meta["target_handle"] = self.target_handle
             self.finished_text.emit(text, meta)
@@ -914,6 +937,7 @@ class SettingsDialog(QDialog):
         model: str,
         device: str,
         auto_paste: bool,
+        vocabulary: str = "",
     ):
         super().__init__(parent)
         # objectName="root" makes the parent's QSS dark-background rule apply
@@ -922,7 +946,7 @@ class SettingsDialog(QDialog):
         self.setObjectName("root")
         self.setWindowTitle("AgeniusNote Lite — Settings")
         self.setModal(True)
-        self.resize(380, 220)
+        self.resize(420, 360)
 
         self.hotkey_edit = HotkeyCaptureEdit(hotkey)
 
@@ -947,6 +971,14 @@ class SettingsDialog(QDialog):
         # label's secondary-blue tone.
         self.auto_paste_check.setStyleSheet("QCheckBox { color: #7ea8cc; }")
 
+        self.vocab_edit = QTextEdit()
+        self.vocab_edit.setAcceptRichText(False)
+        self.vocab_edit.setPlainText(vocabulary or "")
+        self.vocab_edit.setPlaceholderText(
+            "Terms to bias transcription toward, e.g.  n8n, Agenius, Cursor, faster-whisper"
+        )
+        self.vocab_edit.setFixedHeight(70)
+
         def _form_label(text: str) -> QLabel:
             lbl = QLabel(text)
             lbl.setStyleSheet("color: #7ea8cc;")
@@ -957,9 +989,11 @@ class SettingsDialog(QDialog):
         form.addRow(_form_label("Whisper model:"), self.model_combo)
         form.addRow(_form_label("Device:"), self.device_combo)
         form.addRow(_form_label(""), self.auto_paste_check)
+        form.addRow(_form_label("Custom vocabulary:"), self.vocab_edit)
 
         hint = QLabel(
             "Hotkey: click the field and press the combination you want.\n"
+            "Vocabulary: short comma/space list of proper nouns or acronyms (5–20 terms works best).\n"
             "Settings save to config.json; environment variables remain a fallback."
         )
         hint.setWordWrap(True)
@@ -984,13 +1018,20 @@ class SettingsDialog(QDialog):
             "model": self.model_combo.currentText().strip() or FALLBACK_MODEL,
             "device": self.device_combo.currentText().strip().lower() or FALLBACK_DEVICE,
             "auto_paste": self.auto_paste_check.isChecked(),
+            "vocabulary": self.vocab_edit.toPlainText().strip(),
         }
 
 
 class LiteWindow(QWidget):
     _preload_done = Signal(bool, str)  # (ok, message)
 
-    def __init__(self, hotkey_combo: str, model_name: str, device_pref: str):
+    def __init__(
+        self,
+        hotkey_combo: str,
+        model_name: str,
+        device_pref: str,
+        vocabulary: str = "",
+    ):
         super().__init__()
         self.setObjectName("root")
         self.setWindowTitle("AgeniusNote Lite")
@@ -1003,6 +1044,7 @@ class LiteWindow(QWidget):
 
         self.model_name = model_name
         self.device_pref = (device_pref or "cpu").lower()
+        self.vocabulary = vocabulary or ""
         self.hotkey_combo = hotkey_combo
         self.recorder: Recorder | None = None
         self.recording = False
@@ -1242,6 +1284,7 @@ class LiteWindow(QWidget):
             self.model_name,
             self.device_pref,
             self._target_handle,
+            self.vocabulary,
         )
         self.worker.finished_text.connect(self._on_transcribed)
         self.worker.failed.connect(self._on_failed)
@@ -1320,6 +1363,7 @@ class LiteWindow(QWidget):
             model=self.model_name,
             device=self.device_pref,
             auto_paste=self.auto_paste,
+            vocabulary=self.vocabulary,
         )
         if dlg.exec() != QDialog.Accepted:
             return
@@ -1329,6 +1373,7 @@ class LiteWindow(QWidget):
             model=new["model"],
             device=new["device"],
             auto_paste=bool(new["auto_paste"]),
+            vocabulary=new["vocabulary"],
         )
 
     def _apply_settings(
@@ -1337,6 +1382,7 @@ class LiteWindow(QWidget):
         model: str,
         device: str,
         auto_paste: bool,
+        vocabulary: str = "",
     ) -> None:
         # Persist first so a crash mid-apply still leaves the file consistent.
         self._persist({
@@ -1344,7 +1390,11 @@ class LiteWindow(QWidget):
             "model": model,
             "device": device,
             "auto_paste": auto_paste,
+            "vocabulary": vocabulary,
         })
+
+        # Vocabulary: pure data, no warmup needed. Next transcribe() picks it up.
+        self.vocabulary = vocabulary
 
         # Auto-paste toggle button + flag.
         self.auto_paste = auto_paste
@@ -1420,7 +1470,7 @@ def main() -> int:
     icon_path = _resource_path("assets/icon.ico")
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
-    win = LiteWindow(DEFAULT_HOTKEY, DEFAULT_MODEL, DEFAULT_DEVICE)
+    win = LiteWindow(DEFAULT_HOTKEY, DEFAULT_MODEL, DEFAULT_DEVICE, DEFAULT_VOCABULARY)
     win.show()
     return app.exec()
 

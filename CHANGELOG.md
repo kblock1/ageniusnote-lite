@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 ## [Unreleased]
 
 ### Added
+- **Custom vocabulary / hotwords.** Settings dialog now has a "Custom vocabulary" field — a short list of proper nouns or acronyms (e.g. `n8n, Agenius, Cursor, faster-whisper`) that biases the decoder toward those terms. The same string is passed to faster-whisper as both `hotwords=` (token-level bias) and `initial_prompt=` (so preferred casing/spelling for things like `n8n` is also picked up). Configurable via the new `VN_LITE_VOCABULARY` env var or the `vocabulary` key in `config.json`. No model warmup needed on save — next transcription picks it up. Older faster-whisper builds without `hotwords` degrade gracefully to no biasing.
 - **In-app Settings dialog.** A new Settings button next to Auto-paste opens a modal for changing the global hotkey, Whisper model, device (CPU / CUDA / auto), and default auto-paste state. The hotkey field captures the next chord you press, so picking a non-colliding shortcut no longer requires editing env vars or knowing the pynput string format.
 - **Persisted user config.** Settings save to `%APPDATA%\AgeniusNote Lite\config.json` (Windows), `~/Library/Application Support/AgeniusNote Lite/` (macOS), or `~/.config/ageniusnote-lite/` (Linux). Resolution priority is `config.json` > `VN_LITE_*` env vars > hardcoded defaults, so existing setups keep working unchanged.
 - **Live apply on save.** Saving Settings rebinds the global hotkey, swaps the model/device, and re-runs warmup in the background — no restart needed.

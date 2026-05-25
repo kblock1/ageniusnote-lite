@@ -24,6 +24,19 @@ import threading
 import time
 from pathlib import Path
 
+# When running under PyInstaller's windowed bootloader (runw.exe / .app),
+# sys.stdout and sys.stderr are None. Libraries that print to stderr -- notably
+# tqdm via huggingface_hub.snapshot_download() in _resolve_model_path() -- then
+# crash with "AttributeError: 'NoneType' object has no attribute 'write'" the
+# first time they try to report progress. The user sees the catch-all "model
+# download failed / no internet" dialog even though the network is fine and
+# the real fault is just a missing stream object. Route both to devnull so any
+# progress bar, warning, or stray print is silently discarded.
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+
 _APP_DIR = Path(__file__).resolve().parent
 
 

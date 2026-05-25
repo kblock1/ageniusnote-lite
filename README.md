@@ -17,6 +17,21 @@ Grab the latest release from the [Releases](https://github.com/Agenius-AI-Labs/a
 3. Optional during setup: tick "Create a desktop icon" and "Launch when Windows starts".
 4. Launch AgeniusNote Lite. The window stays on top so you can see the recording state.
 
+#### If Windows blocks the installer
+
+AgeniusNote Lite is currently distributed unsigned, so on first run Windows SmartScreen may show **"Windows protected your PC"** and Microsoft Defender may delay or quarantine the installer. Neither means the file is harmful — it means we don't (yet) pay for a code-signing certificate. The installer is unprivileged (no UAC), per-user only, and the source is in this repo if you want to verify what's inside.
+
+**To install anyway:**
+
+1. On the SmartScreen dialog, click **More info**, then **Run anyway**.
+2. If Defender quarantined the file, restore it from **Windows Security → Virus & threat protection → Protection history**, then re-run the installer.
+3. If a third-party AV flagged it, you can usually whitelist `%LocalAppData%\Programs\AgeniusNote Lite\` and the installer file.
+
+**To help us reduce the warnings for everyone:**
+
+- If Microsoft Defender flagged the installer, submit it for analysis at <https://www.microsoft.com/en-us/wdsi/filesubmission> — choose "I think this file should not be detected as malware", upload the `.exe`, and reference this repo URL. Microsoft typically reviews within 24-72 hours and the verdict propagates to every Defender install worldwide.
+- If a different AV flagged it, every major vendor has a "false positive" report form on their support site (Kaspersky, Norton, McAfee, ESET, Bitdefender, etc.). Submitting via the vendor form reaches their signatures team directly.
+
 ### macOS
 
 1. Download the DMG for your Mac:

@@ -4,6 +4,19 @@ All notable changes to AgeniusNote Lite are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Bundled `AgeniusNoteLite.exe` now ships with populated Windows file properties** (Company, FileDescription, ProductName, FileVersion, LegalCopyright). The PyInstaller spec generates a VSVersionInfo file from `packaging/VERSION` on each Windows build and passes it via `EXE(version=...)`. AV engines and SmartScreen treat exes with blank version resources as more suspicious, so populating them is the cheapest available trust signal short of a code-signing certificate.
+- **Installer (Inno Setup) carries richer file-properties metadata.** Added `AppCopyright`, `UninstallDisplayName`, `SetupMutex`, and `VersionInfoVersion` / `VersionInfoCompany` / `VersionInfoDescription` / `VersionInfoCopyright` / `VersionInfoProductName` / `VersionInfoProductVersion`. The installer .exe now identifies itself in the Details tab the way a normal commercial installer would, reducing AV heuristic flags.
+
+### Added
+- **Code-signing wiring stub in `packaging/installer.iss`.** `SignTool=` / `SignedUninstaller=yes` directives are present but commented out, with an inline guide for enabling them once an OV / EV code-signing certificate is available. Until then, the lines remain inert.
+- **README: "If Windows blocks the installer" section.** Step-by-step for clicking past SmartScreen, restoring Defender-quarantined files, and submitting the installer to Microsoft / third-party AV vendors as a false-positive report. Shortens the path from "Windows blocked it" to "installed successfully" and gives users a way to help reduce the warning for everyone.
+
+### Notes
+- The `AppId` in `installer.iss` is deliberately left as the existing string `{B9F1A2E0-7B5C-4F4F-9E2D-AGENIUSNOTELITE}`, even though it isn't a valid hex GUID. Inno Setup treats `AppId` as an opaque identifier, and changing it would orphan every existing v1.0.x install (the upgrader keys off this exact value). The malformed-hex AppId is purely cosmetic and is not the cause of any SmartScreen / AV behavior.
+
 ## [1.0.2] - 2026-05-20
 
 ### Fixed
